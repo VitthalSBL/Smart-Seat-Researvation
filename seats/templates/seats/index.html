@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Smart Seat Reservation</title>
+<style>
+ body{font-family:system-ui,sans-serif;max-width:720px;margin:24px auto;padding:0 12px}
+ .screen{background:#ddd;text-align:center;padding:6px;border-radius:6px;margin-bottom:16px;font-size:13px}
+ .row{display:flex;gap:6px;justify-content:center;margin:6px 0;align-items:center}
+ .row b{width:20px}
+ .seat{width:42px;height:38px;border:0;border-radius:6px;color:#fff;font-size:12px;cursor:pointer}
+ .available{background:#22a559}.reserved{background:#e0a100;cursor:not-allowed}
+ .booked{background:#c0392b;cursor:not-allowed}.mine{background:#2563eb;outline:3px solid #93b4f8}
+ .legend span{display:inline-block;margin-right:14px;font-size:13px}
+ .legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:4px;vertical-align:middle}
+ .bar{margin-top:18px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+ button.pay{background:#111;color:#fff;border:0;padding:10px 18px;border-radius:6px;cursor:pointer}
+ button.pay:disabled{opacity:.4;cursor:not-allowed}
+ #msg{margin-top:10px;font-size:14px}
+</style></head><body>
+<h2>Smart Seat Reservation <small style="font-size:12px"><a href="/accounts/logout/">logout</a></small></h2>
+<div class="legend">
+ <span><i style="background:#22a559"></i>Available</span>
+ <span><i style="background:#e0a100"></i>Reserved (dusre user ne)</span>
+ <span><i style="background:#c0392b"></i>Booked</span>
+ <span><i style="background:#2563eb"></i>Aapki selection</span>
+</div>
+<div class="screen">SCREEN</div>
+<div id="grid"></div>
+<div class="bar">
+ <div>Selected: <b id="sel">-</b></div>
+ <div>Time left: <b id="timer">--:--</b></div>
+ <button class="pay" id="pay" disabled>Pay &amp; Confirm</button>
+</div>
+<div id="msg"></div>
+<script>
+const csrf = document.cookie.match(/csrftoken=([^;]+)/)?.[1];
+let seats = [], remaining = null, busy = false;
+const $ = id => document.getElementById(id);
+const say = (t, err) => { $("msg").textContent = t; $("msg").style.color = err ? "#c0392b" : "#22a559"; };
+
+async function post(url, body) {
+  const r = await fetch(url, {method: "POST", headers: {"Content-Type": "application/json", "X-CSRFToken": csrf},
+                              body: JSON.stringify(body || {})});
+  return r.json();
+}
+async function refresh() {
+  if (busy) return;
+  const d = await (await fetch("/api/seats/")).json();
+  seats = d.seats; remaining = d.expires_in; render();
+}
+function render() {
+  const rows = {};
+  seats.forEach(s => (rows[s.row] ||= []).push(s));
+  $("grid").innerHTML = "";
+  for (const r in rows) {
+    const div = document.createElement("div"); div.className = "row";
+    div.innerHTML = `<b>${r}</b>`;
+    rows[r].forEach(s => {
+      const b = document.createElement("button");
+      b.className = "seat " + s.state; b.textContent = s.label;
+      b.disabled = s.state === "booked" || s.state === "reserved";
+      b.title = s.state; b.onclick = () => toggle(s.id);
+      div.appendChild(b);
+    });
+    $("grid").appendChild(div);
+  }
+  const mine = seats.filter(s => s.state === "mine");
+  $("sel").textContent = mine.map(s => s.label).join(", ") || "-";
+  $("pay").disabled = mine.length === 0;
+  tick();
+}
+function tick() {
+  if (remaining === null) { $("timer").textContent = "--:--"; return; }
+  const m = String(Math.floor(remaining / 60)).padStart(2, "0"), s = String(remaining % 60).padStart(2, "0");
+  $("timer").textContent = `${m}:${s}`;
+}
+async function toggle(id) {
+  busy = true;
+  const ids = new Set(seats.filter(s => s.state === "mine").map(s => s.id));
+  ids.has(id) ? ids.delete(id) : ids.add(id);
+  const d = await post("/api/select/", {seat_ids: [...ids]});
+  busy = false;
+  d.ok ? say("Selection update ho gayi.") : say(d.error, true);
+  refresh();
+}
+$("pay").onclick = async () => {
+  const d = await post("/api/pay/");
+  d.ok ? say("Booking confirmed: " + d.booked.join(", ")) : say(d.error, true);
+  refresh();
+};
+setInterval(() => { if (remaining !== null && remaining > 0) { remaining--; tick(); } }, 1000);
+setInterval(refresh, 2000);   // live availability (polling)
+refresh();
+</script></body></html>
