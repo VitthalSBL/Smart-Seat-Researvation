@@ -16,7 +16,12 @@
  button.pay:disabled{opacity:.4;cursor:not-allowed}
  #msg{margin-top:10px;font-size:14px}
 </style></head><body>
-<h2>Smart Seat Reservation <small style="font-size:12px"><a href="/accounts/logout/">logout</a></small></h2>
+<h2>Smart Seat Reservation <small style="font-size:12px">
+  <form method="post" action="/accounts/logout/" style="display:inline">
+    {% csrf_token %}
+    <button type="submit" style="background:none;border:none;color:#2563eb;cursor:pointer;padding:0;font-size:12px;text-decoration:underline">logout</button>
+  </form>
+</small></h2>
 <div class="legend">
  <span><i style="background:#22a559"></i>Available</span>
  <span><i style="background:#e0a100"></i>Reserved (dusre user ne)</span>
